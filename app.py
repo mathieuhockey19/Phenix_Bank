@@ -34,6 +34,37 @@ with head2:
     st.session_state.lang=st.segmented_control("Langue",["FR","HU"],default=st.session_state.lang,label_visibility="collapsed") or "FR"
     st.markdown(f'<span class="demo-badge">● {backend_name() or t("demo_mode",st.session_state.lang)}</span>',unsafe_allow_html=True)
 
+payment_label = "💳 Je paye mes amendes" if st.session_state.lang == "FR" else "💳 Befizetem a bírságaimat"
+if st.button(payment_label, key="open_payment_checkout", type="primary", width="stretch"):
+    st.session_state.payment_open = True
+
+def payment_checkout():
+    lang = st.session_state.lang
+    st.subheader("Je paye mes amendes" if lang == "FR" else "Bírságok befizetése")
+    if st.button("← Retour au site" if lang == "FR" else "← Vissza", key="close_payment_checkout"):
+        st.session_state.payment_open = False
+        st.rerun()
+    # Un joueur inactif peut encore avoir un solde à régler.
+    choices = sorted(store["players"], key=lambda p: (p["first_name"], p["last_name"]))
+    if not choices:
+        st.info("Aucun joueur disponible." if lang == "FR" else "Nincs elérhető játékos.")
+        return
+    by_id = {p["id"]: p for p in choices}
+    pid = st.selectbox(
+        "Qui es-tu ?" if lang == "FR" else "Ki vagy?",
+        list(by_id), index=None,
+        placeholder="Sélectionne ton nom" if lang == "FR" else "Válaszd ki a neved",
+        format_func=lambda value: f"#{by_id[value]['jersey_number']} · {by_id[value]['first_name']} {by_id[value]['last_name']}",
+        key="payment_player_id",
+    )
+    if pid is None:
+        return
+    player = by_id[pid]
+    name = f"{player['first_name']} {player['last_name']}"
+    info = totals(store, pid)
+    st.metric("Reste à payer" if lang == "FR" else "Fizetendő", euro(info["remaining"]))
+    payment_panel(info["remaining"], lang, name)
+
 def section(title): st.markdown(f'<h2 class="section-title">{title}</h2>',unsafe_allow_html=True)
 def status_badge(status):
     label=t(status,st.session_state.lang)
@@ -73,7 +104,7 @@ def profile(pid):
         metrics(info,st.session_state.lang)
         if info["remaining"]>0:
             if st.button(t("pay",st.session_state.lang).upper(),type="primary",width="stretch"): st.session_state.show_wero=not st.session_state.get("show_wero",False)
-            if st.session_state.get("show_wero"): payment_panel(info["remaining"],st.session_state.lang)
+            if st.session_state.get("show_wero"): payment_panel(info["remaining"],st.session_state.lang,f"{p['first_name']} {p['last_name']}")
     section(t("player_history",st.session_state.lang))
     fine_list([f for f in store["fines"] if f["player_id"]==pid])
 
@@ -167,7 +198,7 @@ def payments_ui():
     with st.form("payment"):
         label=st.selectbox(t("player",st.session_state.lang),options); p=options[label]
         amount=st.number_input(t("amount",st.session_state.lang),min_value=.5,value=max(.5,float(p["remaining"])),step=.5)
-        method=st.selectbox(t("method",st.session_state.lang),["Wero","Espèces","Virement",t("other",st.session_state.lang)]); comment=st.text_input(t("comment",st.session_state.lang))
+        method=st.selectbox(t("method",st.session_state.lang),["Lydia","Wero","Espèces","Virement",t("other",st.session_state.lang)]); comment=st.text_input(t("comment",st.session_state.lang))
         if st.form_submit_button(t("record_payment",st.session_state.lang),type="primary"): add_payment(store,p["id"],amount,method,comment); st.success(t("payment_saved",st.session_state.lang))
     st.caption(t("payment_note",st.session_state.lang))
 
@@ -190,10 +221,13 @@ def rules_ui():
         c1,c2,c3=st.columns([6,1,1]); c1.write(r["label_fr"] if st.session_state.lang=="FR" else r["label_hu"]); c2.write(euro(r["amount"]))
         if c3.button("✓" if r["active"] else "○",key=f"rule{r['id']}"): r["active"]=not r["active"]; remote_update(store,"rules",r["id"],{"active":r["active"]}); st.rerun()
 
-if page=="profile": profile(st.session_state.get("selected_player",1))
+if st.session_state.get("payment_open"):
+    payment_checkout()
+elif page=="profile": profile(st.session_state.get("selected_player",1))
 elif page=="home": home()
 elif page=="players": players()
 elif page=="ranking": ranking()
 elif page=="history": history()
 elif page=="rules": rules()
 elif page=="admin": admin()
+
