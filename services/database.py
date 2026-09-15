@@ -1,7 +1,9 @@
 from copy import deepcopy
-from datetime import date
+from datetime import date,datetime,timedelta
 from pathlib import Path
+import json
 import re
+import uuid
 import streamlit as st
 
 PLAYER_META=[("Mathieu","DERUELLE","Attaquant"),("Dimitri","JUAN","Gardien"),("Alex","CHRETIEN","Défenseur"),("Alexis","GOURVENNEC","Attaquant"),("Alois","JONCOUX","Attaquant"),("Arthur","VALOGNES","Défenseur"),("Axel","BOISSEAU","Attaquant"),("Benji","TELLIER","Défenseur"),("Diego","DURAN","Attaquant"),("Lorinc","FARKAS","Attaquant"),("Matyas","SZOLLOSI","Défenseur"),("Maxime","RIDDE","Gardien"),("Morgan","GUYONVARCH","Attaquant"),("Rémi","BOISSEAU","Défenseur"),("Thomas","BOYARD","Attaquant"),("William","GARNIER","Défenseur")]
@@ -33,8 +35,80 @@ def _seed():
 
 def get_store():
     if "store" not in st.session_state:
-        st.session_state.store=_load_supabase() or deepcopy(_seed())
+        st.session_state.store=_load_google_sheets() or _load_supabase() or deepcopy(_seed())
     return st.session_state.store
+
+SHEET_NAMES={"players":"Joueurs","rules":"Règles","fines":"Amendes","payments":"Paiements"}
+SHEET_HEADERS={
+    "players":{"id":"Identifiant","first_name":"Prénom","last_name":"Nom","jersey_number":"Numéro","photo_path":"Photo","position":"Poste","active":"Actif"},
+    "rules":{"id":"Identifiant","label_fr":"Motif (FR)","label_hu":"Motif (HU)","amount":"Montant (€)","active":"Actif"},
+    "fines":{"id":"Identifiant","player_id":"Joueur (ID)","rule_id":"Règle (ID)","custom_reason":"Motif personnalisé","base_amount":"Montant de base (€)","final_amount":"Montant final (€)","match_day":"Jour de match","status":"Statut","fine_date":"Date","comment":"Commentaire"},
+    "payments":{"id":"Identifiant","player_id":"Joueur (ID)","amount":"Montant (€)","payment_date":"Date","method":"Méthode","comment":"Commentaire"},
+}
+
+def _google_credentials():
+    try:
+        section=st.secrets.get("google_sheets", {})
+        raw=section.get("service_account_json", "")
+        return section.get("spreadsheet_id", ""), json.loads(raw) if raw else None
+    except (st.errors.StreamlitSecretNotFoundError, json.JSONDecodeError):
+        return "", None
+
+@st.cache_resource
+def _google_book(spreadsheet_id, credentials_json):
+    import gspread
+    credentials=json.loads(credentials_json)
+    return gspread.service_account_from_dict(credentials).open_by_key(spreadsheet_id)
+
+def _book():
+    spreadsheet_id,credentials=_google_credentials()
+    if not (spreadsheet_id and credentials): return None
+    return _google_book(spreadsheet_id,json.dumps(credentials,sort_keys=True))
+
+def _sheet_rows(table):
+    rows=_book().worksheet(SHEET_NAMES[table]).get_all_records()
+    headers=SHEET_HEADERS[table]
+    result=[{field:row.get(label,"") for field,label in headers.items()} for row in rows]
+    return [row for row in result if row.get("id") not in ("",None)]
+
+def _as_bool(value):
+    return value if isinstance(value,bool) else str(value).strip().lower() in {"true","vrai","1","oui"}
+
+def _as_id(value):
+    try: return int(value)
+    except (TypeError,ValueError): return value
+
+def _as_date(value):
+    if isinstance(value,(int,float)):
+        return date(1899,12,30)+timedelta(days=int(value))
+    text=str(value).strip()[:10]
+    for pattern in ("%Y-%m-%d","%d/%m/%Y"):
+        try: return datetime.strptime(text,pattern).date()
+        except ValueError: pass
+    raise ValueError(f"Date Google Sheets invalide : {value}")
+
+def _load_google_sheets():
+    try:
+        if not _book(): return None
+        players=_sheet_rows("players"); rules=_sheet_rows("rules")
+        fines=_sheet_rows("fines"); payments=_sheet_rows("payments")
+        for p in players:
+            p["id"]=_as_id(p.get("id")); p["jersey_number"]=int(p.get("jersey_number") or 0)
+            p["active"]=_as_bool(p.get("active",True)); p.setdefault("position","Attaquant")
+        for r in rules:
+            r["id"]=_as_id(r.get("id")); r["amount"]=float(r.get("amount") or 0); r["active"]=_as_bool(r.get("active",True))
+        for f in fines:
+            f["id"]=_as_id(f.get("id")); f["player_id"]=_as_id(f.get("player_id")); f["rule_id"]=_as_id(f.get("rule_id")) if f.get("rule_id") not in ("",None) else None
+            f["base_amount"]=float(f.get("base_amount") or 0); f["final_amount"]=float(f.get("final_amount") or 0); f["match_day"]=_as_bool(f.get("match_day"))
+            f["reason"]=f.get("custom_reason") or next((r["label_fr"] for r in rules if r["id"]==f.get("rule_id")),"Autre")
+            f["fine_date"]=_as_date(f["fine_date"])
+        for p in payments:
+            p["id"]=_as_id(p.get("id")); p["player_id"]=_as_id(p.get("player_id")); p["amount"]=float(p.get("amount") or 0)
+            p["payment_date"]=_as_date(p["payment_date"])
+        return {"players":players,"rules":rules,"fines":fines,"payments":payments,"_remote":True,"_backend":"google_sheets"}
+    except Exception as exc:
+        st.warning(f"Google Sheets indisponible, bascule en mode démo : {exc}")
+        return None
 
 def _credentials():
     try:
@@ -68,16 +142,39 @@ def _load_supabase():
         return None
 
 def remote_insert(store, table, payload):
+    if store.get("_backend")=="google_sheets":
+        worksheet=_book().worksheet(SHEET_NAMES[table]); headers=worksheet.row_values(1)
+        row={"id":str(uuid.uuid4()),**payload}
+        fields={label:field for field,label in SHEET_HEADERS[table].items()}
+        worksheet.append_row([row.get(fields.get(header,""),"") for header in headers],value_input_option="USER_ENTERED")
+        return row
     if store.get("_remote"):
         return _client().table(table).insert(payload).execute().data[0]
 
 def remote_update(store, table, row_id, payload):
+    if store.get("_backend")=="google_sheets":
+        worksheet=_book().worksheet(SHEET_NAMES[table]); headers=worksheet.row_values(1)
+        cell=worksheet.find(str(row_id),in_column=1)
+        labels=SHEET_HEADERS[table]
+        for key,value in payload.items():
+            label=labels.get(key)
+            if label in headers: worksheet.update_cell(cell.row,headers.index(label)+1,value)
+        return
     if store.get("_remote"):
         _client().table(table).update(payload).eq("id",row_id).execute()
 
 def remote_delete(store, table, row_id):
+    if store.get("_backend")=="google_sheets":
+        worksheet=_book().worksheet(SHEET_NAMES[table]); cell=worksheet.find(str(row_id),in_column=1)
+        worksheet.delete_rows(cell.row)
+        return
     if store.get("_remote"):
         _client().table(table).delete().eq("id",row_id).execute()
 
 def using_supabase():
     return bool(_credentials()[0] and _credentials()[1])
+
+def backend_name():
+    if _google_credentials()[0] and _google_credentials()[1]: return "GOOGLE SHEETS"
+    if using_supabase(): return "SUPABASE"
+    return ""

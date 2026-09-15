@@ -11,7 +11,7 @@ from components.payment_modal import payment_panel
 from components.player_card import card
 from components.podium import podium
 from services.auth import configured_password,is_admin,login
-from services.database import get_store,remote_delete,remote_insert,remote_update,using_supabase
+from services.database import backend_name,get_store,remote_delete,remote_insert,remote_update
 from services.fines import add_fine,player_rows,totals,update_status
 from services.payments import add_payment
 from utils.formatting import euro,short_date
@@ -32,7 +32,7 @@ with head1:
     st.markdown(f'<div class="brand"><h1>PHÉNIX BANK</h1><p>{t("season",st.session_state.lang).upper()} · {t("tagline",st.session_state.lang).upper()}</p></div>',unsafe_allow_html=True)
 with head2:
     st.session_state.lang=st.segmented_control("Langue",["FR","HU"],default=st.session_state.lang,label_visibility="collapsed") or "FR"
-    st.markdown(f'<span class="demo-badge">● {"SUPABASE" if using_supabase() else t("demo_mode",st.session_state.lang)}</span>',unsafe_allow_html=True)
+    st.markdown(f'<span class="demo-badge">● {backend_name() or t("demo_mode",st.session_state.lang)}</span>',unsafe_allow_html=True)
 
 def section(title): st.markdown(f'<h2 class="section-title">{title}</h2>',unsafe_allow_html=True)
 def status_badge(status):
