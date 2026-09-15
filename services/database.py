@@ -34,6 +34,9 @@ def _seed():
     return {"players":players,"rules":rules,"fines":[],"payments":[]}
 
 def get_store():
+    if any(_apps_credentials()):
+        st.session_state.store=_load_apps_script()
+        return st.session_state.store
     if "store" not in st.session_state:
         st.session_state.store=_load_google_sheets() or _load_supabase() or deepcopy(_seed())
     return st.session_state.store
@@ -92,6 +95,14 @@ def _load_google_sheets():
         if not _book(): return None
         players=_sheet_rows("players"); rules=_sheet_rows("rules")
         fines=_sheet_rows("fines"); payments=_sheet_rows("payments")
+        return _normalize_sheet_store({"players":players,"rules":rules,"fines":fines,"payments":payments}, "google_sheets")
+    except Exception as exc:
+        st.warning(f"Google Sheets indisponible, bascule en mode démo : {exc}")
+        return None
+
+
+def _normalize_sheet_store(data, backend):
+        players=data["players"]; rules=data["rules"]; fines=data["fines"]; payments=data["payments"]
         for p in players:
             p["id"]=_as_id(p.get("id")); p["jersey_number"]=int(p.get("jersey_number") or 0)
             p["active"]=_as_bool(p.get("active",True)); p.setdefault("position","Attaquant")
@@ -105,10 +116,39 @@ def _load_google_sheets():
         for p in payments:
             p["id"]=_as_id(p.get("id")); p["player_id"]=_as_id(p.get("player_id")); p["amount"]=float(p.get("amount") or 0)
             p["payment_date"]=_as_date(p["payment_date"])
-        return {"players":players,"rules":rules,"fines":fines,"payments":payments,"_remote":True,"_backend":"google_sheets"}
-    except Exception as exc:
-        st.warning(f"Google Sheets indisponible, bascule en mode démo : {exc}")
-        return None
+        return {"players":players,"rules":rules,"fines":fines,"payments":payments,"_remote":True,"_backend":backend}
+
+def _apps_credentials():
+    try:
+        section=st.secrets.get("apps_script", {})
+        return section.get("url", ""), section.get("api_key", "")
+    except st.errors.StreamlitSecretNotFoundError:
+        return "", ""
+
+def _apps_request(action, **payload):
+    import requests
+    url, key=_apps_credentials()
+    if not (url.startswith("https://script.google.com/macros/s/") and url.endswith("/exec") and key):
+        raise ValueError("Configuration Apps Script incomplète.")
+    try:
+        response=requests.post(url, json={"action":action,"api_key":key,**payload}, timeout=30)
+        response.raise_for_status()
+        result=response.json()
+    except (requests.RequestException, ValueError):
+        raise RuntimeError("Apps Script inaccessible. Vérifiez le déploiement et réessayez.") from None
+    if not result.get("ok"):
+        raise RuntimeError("Apps Script a refusé la requête. Vérifiez la clé et les colonnes du Sheet.")
+    return result["data"]
+
+def _load_apps_script():
+    try:
+        from services.auth import configured_password
+        if not configured_password():
+            raise ValueError("Mot de passe admin manquant.")
+        return _normalize_sheet_store(_apps_request("read"), "apps_script")
+    except Exception:
+        st.error("Connexion Google Sheets impossible. Vérifiez les Secrets, le mot de passe admin, le déploiement Apps Script et les colonnes du Sheet. Aucune donnée n’a été enregistrée.")
+        st.stop()
 
 def _credentials():
     try:
@@ -142,6 +182,10 @@ def _load_supabase():
         return None
 
 def remote_insert(store, table, payload):
+    if store.get("_backend")=="apps_script":
+        from services.auth import is_admin
+        if not is_admin(): raise PermissionError("Accès admin requis.")
+        return _apps_request("insert",table=table,payload=payload)
     if store.get("_backend")=="google_sheets":
         worksheet=_book().worksheet(SHEET_NAMES[table]); headers=worksheet.row_values(1)
         row={"id":str(uuid.uuid4()),**payload}
@@ -152,6 +196,11 @@ def remote_insert(store, table, payload):
         return _client().table(table).insert(payload).execute().data[0]
 
 def remote_update(store, table, row_id, payload):
+    if store.get("_backend")=="apps_script":
+        from services.auth import is_admin
+        if not is_admin(): raise PermissionError("Accès admin requis.")
+        _apps_request("update",table=table,row_id=str(row_id),payload=payload)
+        return
     if store.get("_backend")=="google_sheets":
         worksheet=_book().worksheet(SHEET_NAMES[table]); headers=worksheet.row_values(1)
         cell=worksheet.find(str(row_id),in_column=1)
@@ -164,6 +213,11 @@ def remote_update(store, table, row_id, payload):
         _client().table(table).update(payload).eq("id",row_id).execute()
 
 def remote_delete(store, table, row_id):
+    if store.get("_backend")=="apps_script":
+        from services.auth import is_admin
+        if not is_admin(): raise PermissionError("Accès admin requis.")
+        _apps_request("delete",table=table,row_id=str(row_id))
+        return
     if store.get("_backend")=="google_sheets":
         worksheet=_book().worksheet(SHEET_NAMES[table]); cell=worksheet.find(str(row_id),in_column=1)
         worksheet.delete_rows(cell.row)
@@ -175,6 +229,8 @@ def using_supabase():
     return bool(_credentials()[0] and _credentials()[1])
 
 def backend_name():
-    if _google_credentials()[0] and _google_credentials()[1]: return "GOOGLE SHEETS"
-    if using_supabase(): return "SUPABASE"
+    active=st.session_state.get("store", {})
+    if active.get("_backend") in {"apps_script","google_sheets"}: return "GOOGLE SHEETS"
+    if active.get("_remote"): return "SUPABASE"
     return ""
+

@@ -14,7 +14,11 @@ streamlit run app.py
 
 La partie publique ne demande aucun compte. Sans secret admin, un bouton explicite ouvre l’admin démo; les changements sont temporaires.
 
-## Configuration de production
+## Connexion Google Sheets avec Apps Script (recommandée)
+
+Suivre [le guide Apps Script](apps-script/README.md) : installer le script dans le classeur, le déployer, puis renseigner son URL et sa clé dans les Secrets Streamlit. Aucun compte de service Google ni fichier JSON n’est nécessaire. Le mot de passe admin est obligatoire pour cette connexion.
+
+## Configuration de production avec Supabase (alternative)
 
 1. Créer un projet Supabase puis exécuter `supabase/schema.sql` et `supabase/seed.sql` dans le SQL Editor.
 2. Copier `.streamlit/secrets.toml.example` vers `.streamlit/secrets.toml`.
@@ -45,3 +49,4 @@ Pousser le dossier sur GitHub, choisir `app.py` comme fichier principal, puis re
 - `supabase/` : schéma et règles initiales
 
 Les paiements sont distincts des amendes. Le solde les impute au total dû du joueur, ce qui équivaut à une allocation FIFO tant qu’aucune ventilation détaillée par paiement n’est requise.
+
