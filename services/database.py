@@ -125,11 +125,18 @@ def _apps_credentials():
     except st.errors.StreamlitSecretNotFoundError:
         return "", ""
 
+@st.cache_data(ttl=20, max_entries=4, show_spinner=False)
+def _cached_apps_read(url, api_key):
+    # Les deux paramètres isolent le cache par configuration.
+    # cache_data fournit une copie indépendante à chaque session.
+    return _apps_request("read")
+
 def _apps_request(action, **payload):
     import requests
     url, key=_apps_credentials()
     if not (url.startswith("https://script.google.com/macros/s/") and url.endswith("/exec") and key):
         raise ValueError("Configuration Apps Script incomplète.")
+    if action != "read": _cached_apps_read.clear()
     try:
         response=requests.post(url, json={"action":action,"api_key":key,**payload}, timeout=30)
         response.raise_for_status()
@@ -138,6 +145,7 @@ def _apps_request(action, **payload):
         raise RuntimeError("Apps Script inaccessible. Vérifiez le déploiement et réessayez.") from None
     if not result.get("ok"):
         raise RuntimeError("Apps Script a refusé la requête. Vérifiez la clé et les colonnes du Sheet.")
+    if action != "read": _cached_apps_read.clear()
     return result["data"]
 
 def _load_apps_script():
@@ -145,7 +153,8 @@ def _load_apps_script():
         from services.auth import configured_password
         if not configured_password():
             raise ValueError("Mot de passe admin manquant.")
-        return _normalize_sheet_store(_apps_request("read"), "apps_script")
+        url, key=_apps_credentials()
+        return _normalize_sheet_store(_cached_apps_read(url, key), "apps_script")
     except Exception:
         st.error("Connexion Google Sheets impossible. Vérifiez les Secrets, le mot de passe admin, le déploiement Apps Script et les colonnes du Sheet. Aucune donnée n’a été enregistrée.")
         st.stop()
@@ -233,4 +242,5 @@ def backend_name():
     if active.get("_backend") in {"apps_script","google_sheets"}: return "GOOGLE SHEETS"
     if active.get("_remote"): return "SUPABASE"
     return ""
+
 
