@@ -37,6 +37,16 @@ with head2:
 payment_label = "💳 Je paye mes amendes" if st.session_state.lang == "FR" else "💳 Befizetem a bírságaimat"
 if st.button(payment_label, key="open_payment_checkout", type="primary", width="stretch"):
     st.session_state.payment_open = True
+    st.session_state.quick_fine_open = False
+
+if is_admin() and st.button(
+    "➕ Ajouter une amende" if st.session_state.lang == "FR" else "➕ Bírság hozzáadása",
+    key="open_quick_fine",
+    width="stretch",
+):
+    st.session_state.quick_fine_open = True
+    st.session_state.payment_open = False
+    st.rerun()
 
 def payment_checkout():
     lang = st.session_state.lang
@@ -159,23 +169,41 @@ def admin():
 
 def add_fine_ui():
     st.subheader(t("add_fine",st.session_state.lang))
+    if st.session_state.pop("fine_added",False):
+        st.success(t("fine_added",st.session_state.lang))
     active=[p for p in store["players"] if p["active"]]
+    if not active:
+        st.info("Aucun joueur actif." if st.session_state.lang=="FR" else "Nincs aktív játékos.")
+        return
     choices={f"#{p['jersey_number']} · {p['first_name']} {p['last_name']}":p["id"] for p in active}
     who=st.selectbox(f'1 · {t("player",st.session_state.lang)}',choices)
     rule_key="label_fr" if st.session_state.lang=="FR" else "label_hu"
-    options={f"{r[rule_key]} — {euro(r['amount'])}":r for r in store["rules"] if r["active"]}; options[t("other",st.session_state.lang)]={"id":None,"label_fr":t("other",st.session_state.lang),"amount":2}
-    reason_label=st.selectbox(f'2 · {t("reason",st.session_state.lang)}',options); rule=options[reason_label]
+    options={f"{r[rule_key]} — {euro(r['amount'])}":r for r in store["rules"] if r["active"]}
+    options[t("other",st.session_state.lang)]={"id":None,"label_fr":t("other",st.session_state.lang),"amount":2}
+    reason_label=st.selectbox(f'2 · {t("reason",st.session_state.lang)}',options)
+    rule=options[reason_label]
     custom=st.text_input(t("custom_reason",st.session_state.lang)) if rule["id"] is None else rule["label_fr"]
     amount=st.number_input(t("base_amount",st.session_state.lang),min_value=.5,value=float(rule["amount"]),step=.5,disabled=rule["id"] is not None)
-    match=st.toggle(t("match_day",st.session_state.lang)); comment=st.text_area(t("comment_optional",st.session_state.lang))
-    final=amount*(2 if match else 1); st.markdown(f'## {t("final_amount",st.session_state.lang)} : :orange[{euro(final)}]')
-    if st.button(t("add_fine",st.session_state.lang).upper(),type="primary",width="stretch"): st.session_state.confirm_fine=(choices[who],rule["id"],custom,amount,match,comment)
-    if st.session_state.get("confirm_fine"):
-        st.warning(f'{t("confirm",st.session_state.lang)} : {euro(final)} · {who}')
-        yes,no=st.columns(2)
-        if yes.button(t("confirm",st.session_state.lang),type="primary",width="stretch"):
-            add_fine(store,*st.session_state.pop("confirm_fine")); st.success(t("fine_added",st.session_state.lang)); st.rerun()
-        if no.button(t("cancel",st.session_state.lang),width="stretch"): st.session_state.pop("confirm_fine",None); st.rerun()
+    match=st.toggle(t("match_day",st.session_state.lang))
+    comment=st.text_area(t("comment_optional",st.session_state.lang))
+    final=amount*(2 if match else 1)
+    st.markdown(f'## {t("final_amount",st.session_state.lang)} : :orange[{euro(final)}]')
+    if st.button(t("add_fine",st.session_state.lang).upper(),key="submit_fine_direct",type="primary",width="stretch"):
+        if rule["id"] is None and not custom.strip():
+            st.error("Indique le motif de l’amende." if st.session_state.lang=="FR" else "Add meg a bírság okát.")
+        else:
+            add_fine(store,choices[who],rule["id"],custom.strip(),amount,match,comment.strip())
+            st.session_state.fine_added=True
+            st.rerun()
+
+def quick_fine():
+    if st.button(
+        "← Retour au site" if st.session_state.lang=="FR" else "← Vissza",
+        key="close_quick_fine",
+    ):
+        st.session_state.quick_fine_open=False
+        st.rerun()
+    add_fine_ui()
 
 def manage_fines():
     names={p["id"]:f"{p['first_name']} {p['last_name']}" for p in store["players"]}
@@ -221,7 +249,9 @@ def rules_ui():
         c1,c2,c3=st.columns([6,1,1]); c1.write(r["label_fr"] if st.session_state.lang=="FR" else r["label_hu"]); c2.write(euro(r["amount"]))
         if c3.button("✓" if r["active"] else "○",key=f"rule{r['id']}"): r["active"]=not r["active"]; remote_update(store,"rules",r["id"],{"active":r["active"]}); st.rerun()
 
-if st.session_state.get("payment_open"):
+if st.session_state.get("quick_fine_open") and is_admin():
+    quick_fine()
+elif st.session_state.get("payment_open"):
     payment_checkout()
 elif page=="profile": profile(st.session_state.get("selected_player",1))
 elif page=="home": home()
@@ -230,4 +260,5 @@ elif page=="ranking": ranking()
 elif page=="history": history()
 elif page=="rules": rules()
 elif page=="admin": admin()
+
 
