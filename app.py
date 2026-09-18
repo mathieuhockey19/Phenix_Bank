@@ -38,6 +38,17 @@ payment_label = "💳 Je paye mes amendes" if st.session_state.lang == "FR" else
 if st.button(payment_label, key="open_payment_checkout", type="primary", width="stretch"):
     st.session_state.payment_open = True
     st.session_state.quick_fine_open = False
+    st.session_state.mobile_admin_open = False
+
+admin_label = (
+    "← Retour au site" if st.session_state.get("mobile_admin_open")
+    else ("🔐 Espace admin" if st.session_state.lang == "FR" else "🔐 Admin felület")
+)
+if st.button(admin_label, key="open_mobile_admin", width="stretch"):
+    st.session_state.mobile_admin_open = not st.session_state.get("mobile_admin_open",False)
+    st.session_state.payment_open = False
+    st.session_state.quick_fine_open = False
+    st.rerun()
 
 if is_admin() and st.button(
     "➕ Ajouter une amende" if st.session_state.lang == "FR" else "➕ Bírság hozzáadása",
@@ -46,6 +57,7 @@ if is_admin() and st.button(
 ):
     st.session_state.quick_fine_open = True
     st.session_state.payment_open = False
+    st.session_state.mobile_admin_open = False
     st.rerun()
 
 def payment_checkout():
@@ -251,6 +263,8 @@ def rules_ui():
 
 if st.session_state.get("quick_fine_open") and is_admin():
     quick_fine()
+elif st.session_state.get("mobile_admin_open"):
+    admin()
 elif st.session_state.get("payment_open"):
     payment_checkout()
 elif page=="profile": profile(st.session_state.get("selected_player",1))
@@ -260,5 +274,6 @@ elif page=="ranking": ranking()
 elif page=="history": history()
 elif page=="rules": rules()
 elif page=="admin": admin()
+
 
 
