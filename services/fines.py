@@ -7,8 +7,13 @@ def totals(store, player_id=None):
     rows=[f for f in store["fines"] if player_id is None or f["player_id"]==player_id]
     valid=[f for f in rows if f["status"]!="cancelled"]
     total=sum(float(f["final_amount"]) for f in valid)
-    paid=sum(float(p["amount"]) for p in store["payments"] if player_id is None or p["player_id"]==player_id)
-    return {"total":total,"paid":min(paid,total),"remaining":max(total-paid,0),"count":len(valid)}
+    payments_total=sum(float(p["amount"]) for p in store["payments"] if player_id is None or p["player_id"]==player_id)
+    status_paid_total=sum(float(f["final_amount"]) for f in valid if f["status"]=="paid")
+    # Les deux parcours admin peuvent représenter le même règlement.
+    # On retient le plus grand cumul pour refléter les amendes marquées payées
+    # sans compter deux fois un paiement également saisi dans Paiements.
+    paid=min(max(payments_total,status_paid_total),total)
+    return {"total":total,"paid":paid,"remaining":max(total-paid,0),"count":len(valid)}
 
 def player_rows(store):
     result=[]
@@ -29,3 +34,4 @@ def update_status(store, fine_id, status):
     elif status=="appeal_accepted": fine["status"]="cancelled"
     else: fine["status"]=status
     remote_update(store,"fines",fine_id,{"status":fine["status"],"final_amount":fine["final_amount"]})
+
