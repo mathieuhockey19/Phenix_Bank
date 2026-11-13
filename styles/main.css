@@ -1,7 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,800&family=Inter:wght@400;500;600;700&display=swap');
 :root{--navy:#031326;--panel:#071d38;--line:#174773;--blue:#176bdb;--gold:#ffbd43;--orange:#f28b27;--muted:#8fa6c4}
 .stApp{background:radial-gradient(circle at 70% -10%,#12386a 0,transparent 35%),linear-gradient(135deg,#020b17,#04162b 55%,#020d1e);color:#f7f9ff;font-family:Inter,sans-serif}
-[data-testid="stHeader"],#MainMenu,footer{display:none!important}.block-container{max-width:1460px;padding:1rem 2rem 3rem}.stApp h1,.stApp h2,.stApp h3{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.04em}
+[data-testid="stHeader"]{
+    background:transparent!important;
+}
+
+#MainMenu,footer{
+    display:none!important;
+}.block-container{max-width:1460px;padding:1rem 2rem 3rem}.stApp h1,.stApp h2,.stApp h3{font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.04em}
 .brand{text-align:center;padding:.5rem 0 1.2rem;border-bottom:1px solid #b97d2a}.brand h1{margin:0;font-size:clamp(2.2rem,5vw,4.2rem);font-style:italic;background:linear-gradient(100deg,#fff 25%,#ffb832 52%,#fff 75%);-webkit-background-clip:text;color:transparent}.brand p{letter-spacing:.38em;color:#dce7f8;margin:0}.demo-badge{display:inline-block;background:#12385f;color:#ffc454;border:1px solid #4a6687;border-radius:99px;padding:.2rem .65rem;font-size:.7rem}
 [data-testid="stSidebar"]{background:linear-gradient(180deg,#071c37,#021225);border-right:1px solid #12375d}[data-testid="stSidebar"] [role="radiogroup"] label{padding:.75rem .8rem;margin:.18rem 0;border-radius:8px;font-weight:600}[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked){background:linear-gradient(90deg,#ca8c26,#26364a);color:white}
 .metric-card{background:linear-gradient(145deg,#092442,#06192f);border:1px solid #1b4d79;border-radius:11px;padding:1rem;display:flex;gap:1rem;align-items:center;min-height:92px}.metric-card small{display:block;text-transform:uppercase;color:#9eb3d3;font-size:.68rem}.metric-card strong{font:800 1.8rem "Barlow Condensed";display:block}.metric-icon{font-size:2rem}.gold{color:#ffc04a}.green{color:#45dc7b}.red{color:#ff5151}.white{color:#fff}
