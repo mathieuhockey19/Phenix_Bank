@@ -6,7 +6,7 @@ import re
 import uuid
 import streamlit as st
 
-PLAYER_META=[("Mathieu","DERUELLE","Attaquant"),("Dimitri","JUAN","Gardien"),("Alex","CHRETIEN","Défenseur"),("Alexis","GOURVENNEC","Attaquant"),("Alois","JONCOUX","Attaquant"),("Arthur","VALOGNES","Défenseur"),("Axel","BOISSEAU","Attaquant"),("Benji","TELLIER","Défenseur"),("Diego","DURAN","Attaquant"),("Lorinc","FARKAS","Attaquant"),("Matyas","SZOLLOSI","Défenseur"),("Maxime","RIDDE","Gardien"),("Morgan","GUYONVARCH","Attaquant"),("Rémi","BOISSEAU","Défenseur"),("Thomas","BOYARD","Attaquant"),("William","GARNIER","Défenseur")]
+PLAYER_META=[("Mathieu","DERUELLE","Attaquant"),("Dimitri","JUAN","Gardien"),("Alex","CHRETIEN","Défenseur"),("Alexis","GOURVENNEC","Attaquant"),("Alois","JONCOUX","Attaquant"),("Arthur","VALOGNES","Défenseur"),("Axel","BOISSEAU","Attaquant"),("Benji","TELLIER","Défenseur"),("Diego","DURAN","Attaquant"),("Lorinc","FARKAS","Attaquant"),("Matyas","SZOLLOSI","Défenseur"),("Maxime","RIDDE","Gardien"),("Morgan","GUYONVARCH","Attaquant"),("Rémi","BOISSEAU","Défenseur"),("Thomas","BOYARD","Attaquant"),("William","GARNIER","Défenseur"),("Nicolas","BOUCHERE","Attaquant")]
 
 def _player_assets():
     root=Path(__file__).resolve().parents[1]; folder=root/"assets/players"; cutouts=folder/"cutouts"
@@ -144,7 +144,7 @@ def _apps_request(action, **payload):
     except (requests.RequestException, ValueError):
         raise RuntimeError("Apps Script inaccessible. Vérifiez le déploiement et réessayez.") from None
     if not result.get("ok"):
-        raise RuntimeError("Apps Script a refusé la requête. Vérifiez la clé et les colonnes du Sheet.")
+        raise RuntimeError(f"Apps Script a refusé la requête (code : {result.get('error_code', 'UNKNOWN')}). Consultez les exécutions Apps Script pour le détail.")
     if action != "read": _cached_apps_read.clear()
     return result["data"]
 
